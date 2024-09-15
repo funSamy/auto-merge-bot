@@ -1,24 +1,24 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
-
-# Add your action's branding here. This will appear on the GitHub Marketplace.
+name: 'Auto merge action'
+description: 'Automatically merge pull request when all the checks have passed'
+author: 'funSamy'
 branding:
-  icon: 'heart'
-  color: 'red'
-
-# Define your inputs here.
+  color: orange
+  icon: check-circle
 inputs:
-  milliseconds:
-    description: 'Your input description here'
+  github-token: # id of input
+    description: 'Github token'
     required: true
-    default: '1000'
-
-# Define your outputs here.
+  merge-method: # id of input
+    description: 'Merge method'
+    required: false
+    default: 'squash'
 outputs:
-  time:
-    description: 'Your output description here'
-
+  sha:
+    description: 'The SHA of the commit'
+  merged:
+    description: 'Whether the PR was merged or not'
+  message:
+    description: 'The message of the mermeg commit'
 runs:
-  using: node20
-  main: dist/index.js
+  using: 'node20'
+  main: 'dist/index.js'
