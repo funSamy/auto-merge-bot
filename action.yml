@@ -1,4 +1,4 @@
-name: 'Auto merge action'
+name: 'Auto merge bot'
 description: 'Automatically merge pull request when all the checks have passed'
 author: 'funSamy'
 branding:

@@ -57,7 +57,9 @@ jobs:
         id: test-action
         uses: ./
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          debug: true
+          merge-method: merge
 
       - name: Print Output
         id: output
