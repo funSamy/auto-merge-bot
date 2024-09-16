@@ -58,8 +58,6 @@ jobs:
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          debug: true
-          merge-method: merge
 
       - name: Print Output
         id: output
