@@ -6,84 +6,219 @@
  * variables following the pattern `INPUT_<INPUT_NAME>`.
  */
 
+import { run } from '../src/main'
 import * as core from '@actions/core'
-import * as main from '../src/main'
+import * as github from '@actions/github'
+import * as getInputsModule from '../src/getInputs'
+import * as getPrInfoModule from '../src/getPrInfo'
+import * as logToConsoleModule from '../src/logToConsole'
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+jest.mock('@actions/core', () => ({
+  setFailed: jest.fn(),
+  debug: jest.fn(),
+  error: jest.fn(),
+  notice: jest.fn(),
+  warning: jest.fn(),
+  getInput: jest.fn(),
+  getBooleanInput: jest.fn(),
+  setOutput: jest.fn()
+}))
+jest.mock('@actions/github')
+jest.mock('../src/getInputs')
+jest.mock('../src/getPrInfo')
+jest.mock('../src/logToConsole')
 
-// Other utilities
-const timeRegex = /^\d{2}:\d{2}:\d{2}/
+describe('run', () => {
+  let mockGetInputs: jest.MockedFunction<typeof getInputsModule.getInputs>
+  let mockGetPrInfo: jest.MockedFunction<typeof getPrInfoModule.getPrInfo>
+  let mockLogToConsole: jest.MockedFunction<
+    typeof logToConsoleModule.logToConsole
+  >
+  let mockGetOctokit: jest.MockedFunction<typeof github.getOctokit>
+  let mockSetFailed: jest.Mock // jest.MockedFunction<typeof core.setFailed>
 
-// Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
-let getInputMock: jest.SpiedFunction<typeof core.getInput>
-let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
-
-describe('action', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
 
-    debugMock = jest.spyOn(core, 'debug').mockImplementation()
-    errorMock = jest.spyOn(core, 'error').mockImplementation()
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
-    setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
+    mockGetInputs = getInputsModule.getInputs as jest.MockedFunction<
+      typeof getInputsModule.getInputs
+    >
+    mockGetPrInfo = getPrInfoModule.getPrInfo as jest.MockedFunction<
+      typeof getPrInfoModule.getPrInfo
+    >
+    mockLogToConsole = logToConsoleModule.logToConsole as jest.MockedFunction<
+      typeof logToConsoleModule.logToConsole
+    >
+    mockGetOctokit = github.getOctokit as jest.MockedFunction<
+      typeof github.getOctokit
+    >
+    mockSetFailed = core.setFailed as jest.Mock //jest.MockedFunction<typeof core.setFailed>
+
+    // Mock core.debug to prevent actual logging during tests
+    ;(core.debug as jest.Mock).mockImplementation(() => {})
   })
 
-  it('sets the time output', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return '500'
-        default:
-          return ''
+  it('should merge the PR when mergeable', async () => {
+    // Mock getInputs to return valid inputs
+    mockGetInputs.mockResolvedValue({
+      githubToken: 'fake-token',
+      mergeMethod: 'squash',
+      debug: false
+    })
+
+    // Mock getPrInfo to return valid PR information
+    mockGetPrInfo.mockReturnValue({
+      owner: 'owner',
+      repo: 'repo',
+      prNumber: 123
+    })
+
+    // Create mocks for octokit methods
+    const pullsGetMock = jest.fn()
+    const pullsMergeMock = jest.fn()
+
+    const octokitMock = {
+      rest: {
+        pulls: {
+          get: pullsGetMock,
+          merge: pullsMergeMock
+        }
+      }
+    }
+
+    // Mock github.getOctokit to return our octokitMock
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGetOctokit.mockReturnValue(octokitMock as any)
+
+    // Mock pulls.get to return a mergeable PR
+    pullsGetMock.mockResolvedValue({
+      data: {
+        mergeable: true
       }
     })
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    // Mock pulls.merge to simulate successful merge
+    pullsMergeMock.mockResolvedValue({
+      data: { merged: true }
+    })
 
-    // Verify that all of the core library functions were called correctly
-    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
-    expect(debugMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringMatching(timeRegex)
-    )
-    expect(debugMock).toHaveBeenNthCalledWith(
-      3,
-      expect.stringMatching(timeRegex)
-    )
-    expect(setOutputMock).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      expect.stringMatching(timeRegex)
-    )
-    expect(errorMock).not.toHaveBeenCalled()
+    // Run the function
+    await run()
+
+    // Assertions
+    expect(pullsGetMock).toHaveBeenCalledWith({
+      owner: 'owner',
+      repo: 'repo',
+      pull_number: 123
+    })
+
+    expect(pullsMergeMock).toHaveBeenCalledWith({
+      owner: 'owner',
+      repo: 'repo',
+      pull_number: 123,
+      merge_method: 'squash'
+    })
+
+    expect(mockLogToConsole).toHaveBeenCalledWith({ merged: true })
+
+    expect(mockSetFailed).not.toHaveBeenCalled()
   })
 
-  it('sets a failed status', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return 'this is not a number'
-        default:
-          return ''
+  it('should set failed when prNumber is undefined', async () => {
+    // Mock getInputs to return valid inputs
+    mockGetInputs.mockResolvedValue({
+      githubToken: 'fake-token',
+      mergeMethod: 'squash',
+      debug: false
+    })
+
+    // Mock getPrInfo to return undefined prNumber
+    mockGetPrInfo.mockReturnValue({
+      owner: 'owner',
+      repo: 'repo',
+      prNumber: undefined
+    })
+
+    // Run the function
+    await run()
+
+    // Assertions
+    expect(mockSetFailed).toHaveBeenCalledWith(
+      'Could not find pull request. Skipping...'
+    )
+
+    // Ensure that octokit methods are not called
+    expect(mockGetOctokit).not.toHaveBeenCalled()
+  })
+
+  it('should set failed when PR is not mergeable after retries', async () => {
+    // Mock getInputs to return valid inputs
+    mockGetInputs.mockResolvedValue({
+      githubToken: 'fake-token',
+      mergeMethod: 'squash',
+      debug: false
+    })
+
+    // Mock getPrInfo to return valid PR information
+    mockGetPrInfo.mockReturnValue({
+      owner: 'owner',
+      repo: 'repo',
+      prNumber: 123
+    })
+
+    // Create mocks for octokit methods
+    const pullsGetMock = jest.fn()
+    const pullsMergeMock = jest.fn()
+
+    const octokitMock = {
+      rest: {
+        pulls: {
+          get: pullsGetMock,
+          merge: pullsMergeMock
+        }
+      }
+    }
+
+    // Mock github.getOctokit to return our octokitMock
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockGetOctokit.mockReturnValue(octokitMock as any)
+
+    // Mock pulls.get to always return a non-mergeable PR
+    pullsGetMock.mockResolvedValue({
+      data: {
+        mergeable: false
       }
     })
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    // Mock the wait function to resolve immediately
+    /* eslint-disable */
+    jest
+      .spyOn(require('../src/main'), 'wait')
+      .mockImplementation(() => Promise.resolve())
+    /* eslint-enable */
 
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds not a number'
-    )
-    expect(errorMock).not.toHaveBeenCalled()
+    const maxRetries = 20
+    // Run the function
+    await run({ maxRetries: maxRetries, waitTimeInSeconds: 0.1 })
+
+    // Assertions
+    expect(pullsGetMock).toHaveBeenCalledTimes(maxRetries)
+    expect(mockSetFailed).toHaveBeenCalledWith('Pull request is not mergeable.')
+
+    // Ensure merge was not attempted
+    expect(pullsMergeMock).not.toHaveBeenCalled()
+  })
+
+  it('should set failed when an exception occurs', async () => {
+    const errorMessage = 'An error occurred'
+
+    // Mock getInputs to throw an error
+    mockGetInputs.mockRejectedValue(new Error(errorMessage))
+
+    // Run the function
+    await run()
+
+    // Assertions
+    expect(mockSetFailed).toHaveBeenCalledWith(errorMessage)
   })
 })

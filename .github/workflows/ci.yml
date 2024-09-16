@@ -57,8 +57,15 @@ jobs:
         id: test-action
         uses: ./
         with:
-          milliseconds: 2000
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Print Output
         id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
+        run: |
+          echo sha: ${{ env.sha }}
+          echo merged: ${{ env.merged }}
+          echo message: ${{ env.message }}
+        env:
+          sha: ${{ steps.test-action.outputs.sha }}
+          merged: ${{ steps.test-action.outputs.merged }}
+          message: ${{ steps.test-action.outputs.message }}
