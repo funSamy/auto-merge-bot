@@ -12,6 +12,10 @@ inputs:
     description: 'Merge method'
     required: false
     default: 'squash'
+  debug:
+    description: 'Enable debug mode'
+    required: false
+    default: 'false'
 outputs:
   sha:
     description: 'The SHA of the commit'
